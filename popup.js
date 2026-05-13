@@ -308,19 +308,27 @@ async function detectDocsPlatform() {
 
   // ── Opportunity analysis ─────────────────────────────────────────────────
 
-  async function tryHead(url) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 3000);
-    try {
-      const r = await fetch(url, { signal: ctrl.signal, method: 'HEAD' });
-      clearTimeout(t);
-      return r.ok;
-    } catch { clearTimeout(t); return false; }
+  // tryHead: attempts HEAD, falls back to GET on 405 (some servers reject HEAD)
+  async function tryHead(url, timeoutMs = 5000) {
+    async function attempt(method) {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        const r = await fetch(url, { signal: ctrl.signal, method });
+        clearTimeout(t);
+        return r;
+      } catch { clearTimeout(t); return null; }
+    }
+    const r = await attempt('HEAD');
+    if (!r) return false;
+    if (r.status === 405) { const r2 = await attempt('GET'); return r2 ? r2.ok : false; }
+    return r.ok;
   }
 
-  async function tryGet(url, maxBytes = 50000) {
+  // tryGet: fetches content, returns string or null on failure/timeout
+  async function tryGet(url, maxBytes = 50000, timeoutMs = 6000) {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 4000);
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
       const r = await fetch(url, { signal: ctrl.signal });
       clearTimeout(t);
@@ -425,10 +433,19 @@ async function detectDocsPlatform() {
   ) || /edit (this page|on github|on gitlab)/i.test(bodySnippet);
 
   // ── Agentic score (AFDocs spec — afdocs.dev) ────────────────────────────────
-  const isStaticOrSSR = generator.length > 2
+
+  // Rendering strategy: require specific known SSR/static signals — not just any generator tag
+  const STATIC_GENERATORS = /^(docusaurus|mkdocs|sphinx|vitepress|jekyll|hugo|gatsby|eleventy|hexo|astro|nuxt|next\.js|gitbook|starlight|nextra|vuepress|docsify)/i;
+  const isStaticOrSSR = STATIC_GENERATORS.test(generator)
     || detected.some(p => ['Docusaurus', 'MkDocs', 'Sphinx', 'VitePress', 'Starlight',
         'Jekyll', 'Hugo', 'Nextra', 'VuePress', 'Docsify', 'Fern'].includes(p.name))
-    || ['Next.js', 'Nuxt', 'Astro'].includes(techStack?.name);
+    || ['Next.js', 'Nuxt', 'Astro', 'Gatsby'].includes(techStack?.name);
+
+  // content-start: use document-absolute Y position (scroll-independent)
+  const contentEl = document.querySelector('main, article, [role="main"]');
+  const contentDocTop = contentEl
+    ? contentEl.getBoundingClientRect().top + window.scrollY
+    : Infinity;
 
   const agenticChecks = [
     // LLMs.txt (33 pts)
@@ -439,14 +456,11 @@ async function detectDocsPlatform() {
     { id: 'llms-txt-valid',     label: 'llms.txt has spec-valid structure',       pts: 2,  cat: 'llms',    pass: llmsTxt && /^#\s+\S/.test(llmsTxtContent.trim()) && /^>\s+\S/m.test(llmsTxtContent) },
     // AI Accessibility (27 pts)
     { id: 'rendering-strategy', label: 'Server-rendered or statically generated', pts: 10, cat: 'access',  pass: isStaticOrSSR },
-    { id: 'auth-gate',          label: 'Content accessible without login wall',   pts: 10, cat: 'access',  pass: indexable && (document.body?.textContent.trim().length || 0) > 300 },
+    { id: 'auth-gate',          label: 'Content accessible without login wall',   pts: 10, cat: 'access',  pass: indexable && (document.body?.innerText.trim().length || 0) > 300 },
     { id: 'markdown-url',       label: 'Pages accessible as .md URLs',            pts: 7,  cat: 'access',  pass: mdPathOk },
     // Page Quality (12 pts)
-    { id: 'content-start',      label: 'Main content element near top of page',   pts: 4,  cat: 'quality', pass: (() => {
-        const m = document.querySelector('main, article, [role="main"]');
-        return m ? m.getBoundingClientRect().top < 400 : false;
-      })() },
-    { id: 'page-size',          label: 'Page HTML is lightweight (< 500 KB)',     pts: 4,  cat: 'quality', pass: document.documentElement.innerHTML.length < 500000 },
+    { id: 'content-start',      label: 'Main content starts within first 500px',  pts: 4,  cat: 'quality', pass: contentDocTop < 500 },
+    { id: 'page-size',          label: 'Page HTML is lightweight (< 500 KB)',     pts: 4,  cat: 'quality', pass: document.documentElement.outerHTML.length < 500000 },
     { id: 'redirect-behavior',  label: 'Clean permalink (no legacy extensions)',  pts: 4,  cat: 'quality', pass: !/\.(php|asp|aspx|cfm|cgi)$/.test(window.location.pathname) },
   ];
 
@@ -525,7 +539,8 @@ function renderResults(data) {
         ${stackBadge}
       </div>
       ${data.opportunity ? renderAnalysis(data.opportunity) : ''}
-      ${data.agentic ? renderAgenticScore(data.agentic) : ''}`;
+      ${data.agentic ? renderAgenticScore(data.agentic) : ''}
+      ${renderSummary(data)}`;
     return;
   }
 
@@ -559,17 +574,16 @@ function renderResults(data) {
 
   if (data.opportunity) html += renderAnalysis(data.opportunity);
   if (data.agentic) html += renderAgenticScore(data.agentic);
+  html += renderSummary(data);
 
   el.innerHTML = html;
 }
 
 function renderAnalysis(opp) {
-  const { discoverability: d, aiAssistant: ai, features: f, search, techStack, hasGitEditLink, analytics, openApi } = opp;
+  const { aiAssistant: ai, features: f, search, techStack, hasGitEditLink, analytics, openApi } = opp;
 
   const gaps = [
-    !d.llmsTxt, !d.sitemap, !d.structuredData,
-    !ai.detected, !f.hasFeedback, !f.hasApiPlayground,
-    analytics.length === 0,
+    !ai.detected, !f.hasFeedback, !f.hasApiPlayground, analytics.length === 0,
   ].filter(Boolean).length;
 
   // Search row: 3-state
@@ -590,24 +604,8 @@ function renderAnalysis(opp) {
   return `
     <div class="analysis-card">
       <div class="analysis-header">
-        <span class="analysis-title">Live Page Analysis</span>
-        <span class="analysis-score">${gaps} gap${gaps !== 1 ? 's' : ''} found</span>
-      </div>
-
-      <div class="analysis-group">
-        <div class="analysis-group-title">AI Discoverability</div>
-        ${chk(d.llmsTxt,
-          '<strong>No llms.txt</strong> — content invisible to LLMs. Mintlify auto-generates this.',
-          'llms.txt present')}
-        ${chk(d.sitemap,
-          'No sitemap.xml — poor crawlability for search engines and AI.',
-          'Sitemap.xml present')}
-        ${chk(d.structuredData,
-          'No structured data (JSON-LD) — reduced visibility in AI search results.',
-          'Structured data (JSON-LD) present')}
-        ${chk(d.indexable,
-          'Pages may be blocked from search/AI crawlers (noindex detected).',
-          'Pages are indexable')}
+        <span class="analysis-title">Mintlify Opportunity</span>
+        ${gaps > 0 ? `<span class="analysis-score">${gaps} gap${gaps !== 1 ? 's' : ''}</span>` : ''}
       </div>
 
       <div class="analysis-group">
@@ -621,7 +619,7 @@ function renderAnalysis(opp) {
       <div class="analysis-group">
         <div class="analysis-group-title">Key Features</div>
         ${chk(f.hasFeedback,
-          '<strong>No page feedback</strong> — Mintlify includes 👍👎 feedback on every page.',
+          '<strong>No page feedback</strong> — Mintlify includes 👍👎 on every page.',
           'Page feedback detected')}
         ${chk(f.hasApiPlayground,
           '<strong>No API playground</strong> — Mintlify includes an interactive API reference.',
@@ -629,17 +627,57 @@ function renderAnalysis(opp) {
         ${chk(f.hasVersioning,
           'No version selector — Mintlify supports multi-version docs natively.',
           'Versioning present')}
-        ${hasGitEditLink
-          ? info('Git-based workflow detected (Edit on GitHub links found) — natural Mintlify fit')
-          : ''}
-        ${openApi
-          ? info(`OpenAPI spec detected — Mintlify can render this as an interactive API playground`)
-          : ''}
+        ${hasGitEditLink ? info('Git-based workflow detected — natural Mintlify fit') : ''}
+        ${openApi ? info('OpenAPI spec detected — Mintlify renders this as an interactive API playground') : ''}
         ${analytics.length > 0
-          ? info(`Analytics: ${analytics.join(', ')} (3rd-party) — Mintlify includes native doc analytics`)
+          ? info(`Analytics: ${analytics.join(', ')} (3rd-party) — Mintlify includes native analytics`)
           : chk(false, '<strong>No analytics detected</strong> — Mintlify includes built-in doc analytics.', '')}
         ${techStack ? info(`Tech stack: ${techStack}`) : ''}
       </div>
+    </div>`;
+}
+
+function renderSummary(data) {
+  const { detected, hostname, opportunity: opp, agentic } = data;
+
+  const platform = detected.length > 0
+    ? detected[0].name
+    : (opp?.techStack ? `Homegrown (${opp.techStack})` : 'Homegrown / Unknown');
+
+  const agenticLine = agentic
+    ? `Agentic Score: ${agentic.grade} (${agentic.score}/100)`
+    : '';
+
+  const gaps = [];
+  if (agentic && !agentic.checks.find(c => c.id === 'llms-txt-exists')?.pass) {
+    gaps.push('No llms.txt — content invisible to AI agents');
+  }
+  if (opp) {
+    if (!opp.aiAssistant.detected) gaps.push('No AI assistant');
+    if (!opp.features.hasSearch)   gaps.push('No search');
+    if (!opp.features.hasFeedback) gaps.push('No page feedback');
+    if (!opp.features.hasApiPlayground) gaps.push('No interactive API playground');
+    if (opp.analytics.length === 0) gaps.push('No documentation analytics');
+  }
+
+  const gapsText = gaps.length > 0
+    ? gaps.slice(0, 5).map(g => `• ${g}`).join('\n')
+    : '• No major gaps detected';
+
+  const text = [
+    `${hostname} uses ${platform}.`,
+    agenticLine,
+    '',
+    `Gaps vs. Mintlify:\n${gapsText}`,
+    '',
+    'Mintlify delivers AI search, Ask AI, page feedback, and analytics out of the box.',
+  ].filter(Boolean).join('\n');
+
+  return `
+    <div class="summary-card">
+      <div class="summary-title">Summary</div>
+      <button class="copy-btn" id="copy-summary-btn">Copy</button>
+      <div class="summary-text" id="summary-text">${text}</div>
     </div>`;
 }
 
@@ -726,6 +764,35 @@ async function runScan() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // ── Dark mode toggle ───────────────────────────────────────────────────────
+  const themeBtn = document.getElementById('theme-btn');
+  if (localStorage.getItem('docfinder-theme') === 'dark') {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    themeBtn.textContent = '☀️';
+  }
+  themeBtn.addEventListener('click', () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (isDark) {
+      document.documentElement.removeAttribute('data-theme');
+      themeBtn.textContent = '🌙';
+      localStorage.setItem('docfinder-theme', 'light');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      themeBtn.textContent = '☀️';
+      localStorage.setItem('docfinder-theme', 'dark');
+    }
+  });
+
+  // ── Copy summary button (delegated) ───────────────────────────────────────
+  document.getElementById('results').addEventListener('click', (e) => {
+    if (e.target.id === 'copy-summary-btn') {
+      const text = document.getElementById('summary-text')?.textContent || '';
+      navigator.clipboard.writeText(text).catch(() => {});
+      e.target.textContent = 'Copied!';
+      setTimeout(() => { e.target.textContent = 'Copy'; }, 1800);
+    }
+  });
+
   runScan();
   document.getElementById('rescan-btn').addEventListener('click', runScan);
 });
