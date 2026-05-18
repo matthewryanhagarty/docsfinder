@@ -406,7 +406,27 @@ async function detectDocsPlatform() {
   const searchTool = SEARCH_TOOLS.find(s => s.found) || null;
 
   // Feature gaps
-  const hasSearch        = hasEl('input[type="search"],input[placeholder*="search" i],[role="search"],.DocSearch,#docsearch,[class*="search-input"]');
+  // hasSearch: standard inputs + platform-native search components (Fern, GitBook, ReadMe, MkDocs, etc.)
+  const hasSearch = hasEl([
+    'input[type="search"]',
+    'input[placeholder*="search" i]',
+    '[role="search"]',
+    '.DocSearch', '#docsearch',
+    '[class*="search-input"]',
+    // Fern native search
+    '[class*="fern-search"],[id*="fern-search"]',
+    'fern-search-button',
+    // GitBook native search
+    '[data-testid="search-ask-button"],[class*="search-ask"]',
+    // ReadMe native search
+    '.rm-SearchBox',
+    // MkDocs Material
+    '.md-search',
+    // Generic platform search buttons with keyboard shortcut hints (e.g. "/ " or "⌘K")
+    'button[aria-label*="search" i]',
+    'button[class*="search"]',
+    '[data-search]',
+  ].join(','));
   const hasAiSearch      = /ai.{0,15}search|search.{0,15}ai|semantic.{0,15}search|ask.{0,15}ai/i.test(document.body?.innerHTML.slice(0, 40000) || '');
   const hasFeedback      = hasEl('[class*="feedback"],[id*="feedback"],button[aria-label*="helpful" i],[class*="thumbs"],[class*="was-this"],[class*="helpful"]');
   const hasApiPlayground = hasEl('.swagger-ui,redoc,[class*="playground"],[class*="try-it"],[class*="api-explorer"],[id*="swagger"],[class*="tryit"]');
