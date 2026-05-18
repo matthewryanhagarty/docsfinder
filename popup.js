@@ -282,6 +282,17 @@ async function detectDocsPlatform() {
       ],
     },
     {
+      name: 'Front Knowledge Base', color: '#f04e23', category: 'Help Center Platform',
+      signals: [
+        { label: 'front.com / frontapp.com domain',   detected: /front\.com|frontapp\.com/.test(hostname) },
+        // Most reliable: JS globals injected by the Front KB runtime
+        { label: 'window.kbid global',                detected: typeof window.kbid !== 'undefined' },
+        { label: 'window.aHost (frontapp.com)',        detected: typeof window.aHost === 'string' && window.aHost.includes('frontapp.com') },
+        { label: 'Front KB server script',            detected: hasScript(/frontapp\.com/) || inHead(/knowledge-base-server\.frontapp\.com|companion\.frontapp\.com/) },
+        { label: 'Front in head',                     detected: inHead(/frontapp\.com/) },
+      ],
+    },
+    {
       name: 'Zendesk', color: '#03363d', category: 'Help Center Platform',
       signals: [
         { label: 'zendesk.com domain',  detected: /zendesk\.com|zendeskguide\.com/.test(hostname) },
