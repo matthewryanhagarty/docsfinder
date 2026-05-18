@@ -130,6 +130,17 @@ async function detectDocsPlatform() {
 
     // ── API Docs Platforms ─────────────────────────────────────────────────
     {
+      name: 'Slate', color: '#2a4e7c', category: 'API Docs Framework',
+      signals: [
+        { label: 'Meta generator',             detected: /^slate/i.test(generator) },
+        // Three-column layout: the defining Slate structure
+        { label: 'Slate 3-column layout',      detected: hasEl('.toc-wrapper') && hasEl('.dark-box') },
+        { label: 'Language selector',          detected: hasEl('.lang-selector,[data-language-name]') },
+        { label: 'TOC + content structure',    detected: hasEl('.toc-wrapper') && hasEl('.content') },
+        { label: 'Slate in head',              detected: inHead(/slate/) },
+      ],
+    },
+    {
       name: 'Stoplight', color: '#6366f1', category: 'API Docs Platform',
       signals: [
         { label: 'stoplight.io domain',   detected: hostname.includes('stoplight.io') },
