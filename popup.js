@@ -52,6 +52,7 @@ async function detectDocsPlatform() {
         { label: 'Fern CDN script',           detected: hasScript(/cdn\.buildwithfern\.com|fern-docs/) },
         { label: 'Fern script reference',     detected: hasScript(/buildwithfern/) },
         { label: 'Fern DOM markers',          detected: hasEl('[class*="fern-"],[data-fern]') || inHead(/buildwithfern|fern-docs/) },
+        { label: 'Fern Ask AI button',        detected: !!document.querySelector('fern-ask-ai-button') },
       ],
     },
     {
@@ -380,11 +381,14 @@ async function detectDocsPlatform() {
   const allSrcText = [...scriptSrcs, ...linkHrefs, ...scriptTexts.map(t => t.slice(0, 2000))].join(' ');
   const AI_ASSISTANTS = [
     { name: 'Kapa.ai',    found: !!document.querySelector('kapa-widget') || /kapa\.ai/.test(allSrcText) },
-    { name: 'Inkeep',     found: /inkeep\.(com|ai)/.test(allSrcText) },
+    { name: 'Inkeep',     found: /inkeep\.(com|ai)/.test(allSrcText) || !!document.querySelector('inkeep-chat,inkeep-floating-button,[class*="inkeep"]') },
     { name: 'Mendable',   found: /mendable\.ai/.test(allSrcText) },
     { name: 'Chatbase',   found: /chatbase\.co/.test(allSrcText) },
     { name: 'Cohere',     found: /cohere\.ai/.test(allSrcText) },
     { name: 'Algolia AI', found: hasEl('#docsearch,.DocSearch') && /instantsearch|docsearch/.test(allSrcText) },
+    // Platform-native AI assistants
+    { name: 'Fern Ask AI',     found: !!document.querySelector('fern-ask-ai-button,[class*="fern-ask-ai"],[id*="fern-ask-ai"]') },
+    { name: 'Mintlify Ask AI', found: !!document.querySelector('[class*="ask-ai"],[id*="ask-ai"]') && inHead(/mintlify/) },
   ];
   const aiMatch = AI_ASSISTANTS.find(a => a.found);
 
