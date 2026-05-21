@@ -522,9 +522,11 @@ async function detectDocsPlatform() {
     { id: 'redirect-behavior',  label: 'Clean permalink (no legacy extensions)',  pts: 4,  cat: 'quality', pass: !/\.(php|asp|aspx|cfm|cgi)$/.test(window.location.pathname) },
   ];
 
-  const agenticRaw   = agenticChecks.reduce((s, c) => s + (c.pass ? c.pts : 0), 0);
-  const agenticScore = Math.round((agenticRaw / 72) * 100);
-  const agenticGrade = agenticScore >= 95 ? 'A+' : agenticScore >= 85 ? 'A'
+  const agenticRaw = agenticChecks.reduce((s, c) => s + (c.pass ? c.pts : 0), 0);
+  // AFDocs spec hard cap: no llms.txt → score cannot exceed 59 (D), regardless of other checks
+  const agenticScoreRaw  = Math.round((agenticRaw / 72) * 100);
+  const agenticScore     = !llmsTxt ? Math.min(agenticScoreRaw, 59) : agenticScoreRaw;
+  const agenticGrade     = agenticScore >= 95 ? 'A+' : agenticScore >= 85 ? 'A'
     : agenticScore >= 70 ? 'B' : agenticScore >= 50 ? 'C' : agenticScore >= 30 ? 'D' : 'F';
 
   return {
@@ -740,43 +742,87 @@ function renderSummary(data) {
 }
 
 function renderAgenticScore(agentic) {
-  const { score, grade, checks } = agentic;
+  const { score, grade, checks, categories, cap, fromApi } = agentic;
   const gradeColors = { 'A+': '#22c55e', 'A': '#4ade80', 'B': '#a3e635', 'C': '#fbbf24', 'D': '#f97316', 'F': '#ef4444' };
   const color = gradeColors[grade] || '#22d3ee';
 
-  const cats = [
-    { key: 'llms',    label: 'LLMs.txt' },
-    { key: 'access',  label: 'AI Accessibility' },
-    { key: 'quality', label: 'Page Quality' },
-  ];
+  // Build groups: use API categories if available, else fall back to client-side cats
+  let groupsHtml;
+  if (fromApi && categories?.length) {
+    groupsHtml = categories.map(({ id, label }) => {
+      const catChecks = checks.filter(c => (c.category ?? c.cat) === id);
+      if (!catChecks.length) return '';
+      const rows = catChecks.map(c => {
+        if (c.warn) return info(c.label);
+        return chk(c.pass, `<strong>${c.label}</strong>`, c.label);
+      }).join('');
+      return `
+        <div class="agentic-group">
+          <div class="agentic-group-title">${label}</div>
+          ${rows}
+        </div>`;
+    }).join('');
+  } else {
+    const cats = [
+      { key: 'llms',    label: 'LLMs.txt' },
+      { key: 'access',  label: 'AI Accessibility' },
+      { key: 'quality', label: 'Page Quality' },
+    ];
+    groupsHtml = cats.map(({ key, label }) => {
+      const catChecks = checks.filter(c => (c.cat ?? c.category) === key);
+      const rows = catChecks.map(c =>
+        chk(c.pass, `<strong>${c.label}</strong>`, c.label)
+      ).join('');
+      return `
+        <div class="agentic-group">
+          <div class="agentic-group-title">${label}</div>
+          ${rows}
+        </div>`;
+    }).join('');
+  }
 
-  const groupsHtml = cats.map(({ key, label }) => {
-    const catChecks = checks.filter(c => c.cat === key);
-    const rows = catChecks.map(c =>
-      chk(c.pass, `<strong>${c.label}</strong>`, c.label)
-    ).join('');
-    return `
-      <div class="agentic-group">
-        <div class="agentic-group-title">${label}</div>
-        ${rows}
-      </div>`;
-  }).join('');
+  const source = fromApi ? 'afdocs.dev' : 'client-side est. · afdocs.dev';
+  const capNote = cap ? ` · ${cap.reason ?? 'score capped'}` : '';
 
   return `
-    <div class="agentic-card" style="--grade-color: ${color}">
+    <div class="agentic-card" id="agentic-score-card" style="--grade-color: ${color}">
       <div class="agentic-header">
-        <span class="agentic-title">Agentic Score <span style="font-size:9px;opacity:0.6;text-transform:none;letter-spacing:0;font-weight:500">afdocs.dev</span></span>
+        <span class="agentic-title">Agentic Score <span style="font-size:9px;opacity:0.6;text-transform:none;letter-spacing:0;font-weight:500">${source}</span></span>
         <span class="agentic-grade">${grade}</span>
       </div>
       <div class="agentic-score-row">
         <span class="agentic-score-num">${score}</span>
         <div style="flex:1">
           <div class="agentic-bar"><div class="agentic-bar-fill" style="width:${score}%"></div></div>
-          <div class="agentic-score-sub">out of 100 · AI-readiness score</div>
+          <div class="agentic-score-sub">out of 100${capNote}</div>
         </div>
       </div>
       ${groupsHtml}
     </div>`;
+}
+
+async function fetchAndRenderAgenticScore(url) {
+  // Show loading state in the agentic card immediately
+  const placeholder = document.getElementById('agentic-score-card');
+  if (placeholder) {
+    placeholder.innerHTML = `
+      <div class="agentic-header">
+        <span class="agentic-title">Agentic Score <span style="font-size:9px;opacity:0.6;text-transform:none;letter-spacing:0;font-weight:500">afdocs.dev</span></span>
+        <span style="font-size:10px;color:var(--text-3)">Scanning…</span>
+      </div>
+      <div style="padding:12px 14px;display:flex;align-items:center;gap:8px">
+        <div class="spinner" style="width:14px;height:14px;border-width:2px;flex-shrink:0"></div>
+        <span style="font-size:11px;color:var(--text-3)">Running full AI-readiness check…</span>
+      </div>`;
+  }
+
+  try {
+    const res = await fetch(`${AGENTIC_API}?url=${encodeURIComponent(url)}`);
+    if (!res.ok) return;
+    const agentic = await res.json();
+    const card = document.getElementById('agentic-score-card');
+    if (card) card.outerHTML = renderAgenticScore({ ...agentic, fromApi: true });
+  } catch { /* silently fall back to client-side score already shown */ }
 }
 
 function renderError(msg) {
@@ -790,6 +836,8 @@ function renderError(msg) {
 // ─────────────────────────────────────────────────────────────────────────────
 // INIT
 // ─────────────────────────────────────────────────────────────────────────────
+const AGENTIC_API = 'https://docsfinder-api-vercel.vercel.app/api/score';
+
 async function runScan() {
   const resultsEl  = document.getElementById('results');
   const hostnameEl = document.getElementById('current-hostname');
@@ -811,11 +859,20 @@ async function runScan() {
   if (!tab) { renderError('Could not access the current tab.'); return; }
 
   try {
-    const [result] = await chrome.scripting.executeScript({
+    // Step 1: Run DOM detection immediately and render results
+    const [scriptResult] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: detectDocsPlatform,
     });
-    renderResults(result.result);
+
+    const data = scriptResult.result;
+    renderResults(data);
+
+    // Step 2: If not Mintlify, fetch the accurate API score in the background
+    // and update just the agentic card when it arrives
+    if (!data.isMintlify) {
+      fetchAndRenderAgenticScore(tab.url);
+    }
   } catch (err) {
     renderError(err.message || 'This page type cannot be analyzed (e.g. chrome:// pages).');
   }
