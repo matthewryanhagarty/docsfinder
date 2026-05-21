@@ -180,6 +180,18 @@ async function detectDocsPlatform() {
 
     // ── Open-Source Frameworks ─────────────────────────────────────────────
     {
+      name: 'Fumadocs', color: '#f97316', category: 'Open Source Docs Framework',
+      signals: [
+        { label: 'Meta generator',          detected: /fumadocs/i.test(generator) },
+        // fd-* utility classes are unique to Fumadocs' Tailwind preset
+        { label: 'Fumadocs fd-* classes',   detected: inHead(/\bfd-foreground\b|\bfd-background\b|\bfd-muted\b|\bfd-sidebar\b/) || !!document.querySelector('[class*="fd-"]') },
+        // CSS custom properties injected by the Fumadocs layout
+        { label: 'Fumadocs CSS vars',       detected: getComputedStyle(document.documentElement).getPropertyValue('--fd-sidebar-width') !== '' || /--fd-sidebar|--fd-toc/.test(headHTML) },
+        { label: 'Fumadocs script',         detected: hasScript(/fumadocs/) },
+        { label: 'Fumadocs in head',        detected: inHead(/fumadocs/) },
+      ],
+    },
+    {
       name: 'Docusaurus', color: '#0ea5e9', category: 'Open Source Docs Framework',
       signals: [
         { label: 'Meta generator',           detected: /^docusaurus/i.test(generator) },
