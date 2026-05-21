@@ -4,6 +4,10 @@
   "version": "1.0.0",
   "description": "Identifies the documentation platform used by any website — Mintlify, Fern, GitBook, ReadMe, Docusaurus, and more.",
   "permissions": ["activeTab", "scripting"],
+  "host_permissions": [
+    "https://docsfinder-api-vercel.vercel.app/*",
+    "https://www.mintlify.com/*"
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

@@ -306,6 +306,53 @@ async function detectDocsPlatform() {
       ],
     },
     {
+      name: 'Intercom Articles', color: '#6366f1', category: 'Help Center Platform',
+      signals: [
+        { label: 'intercom.com / intercom.help domain', detected: /intercom\.(com|help|io)/.test(hostname) },
+        { label: 'Intercom messenger script',           detected: hasScript(/widget\.intercom\.io|js\.intercomcdn\.com/) },
+        { label: 'Intercom DOM markers',                detected: hasEl('.intercom-app,.intercom-namespace,[class*="intercom-"]') || !!document.querySelector('#intercom-container,#intercom-frame') },
+        { label: 'Intercom in head',                    detected: inHead(/intercom/) },
+      ],
+    },
+    {
+      name: 'Freshdesk', color: '#25c16f', category: 'Help Center Platform',
+      signals: [
+        { label: 'freshdesk.com / myfreshworks domain', detected: /freshdesk\.com|myfreshworks\.com/.test(hostname) },
+        { label: 'Freshdesk DOM markers',               detected: hasEl('.fw-search,.fw-autocomplete-wrapper,.portal--light,.portal--dark') },
+        { label: 'Freshworks script',                   detected: hasScript(/freshdesk\.com|freshworks\.com|freshchat\.com/) },
+        { label: 'Freshdesk search form',               detected: hasEl('#fw-search-form,#searchInput[name="term"]') },
+        { label: 'Freshdesk in head',                   detected: inHead(/freshdesk|freshworks/) },
+      ],
+    },
+    {
+      name: 'HubSpot Knowledge Base', color: '#ff7a59', category: 'Help Center Platform',
+      signals: [
+        { label: 'HubSpot domain',          detected: /hubspot\.com/.test(hostname) },
+        { label: 'HubSpot data attributes', detected: !!document.querySelector('[data-cl-brand*="hubspot"]') },
+        { label: 'HubSpot DOM markers',     detected: hasEl('.hs-breadcrumb-menu,.hs-search-field,.hs-kb-article') },
+        { label: 'HubSpot script',          detected: hasScript(/hubspot\.com|hs-scripts\.com/) },
+        { label: 'HubSpot in head',         detected: inHead(/hubspot/) },
+      ],
+    },
+    {
+      name: 'Guru', color: '#dc2626', category: 'Knowledge Base Platform',
+      signals: [
+        { label: 'getguru.com domain',   detected: hostname.includes('getguru.com') },
+        { label: 'Guru script',          detected: hasScript(/getguru\.com/) },
+        { label: 'Guru global',          detected: typeof (window as any).__GURU_CONFIG__ !== 'undefined' },
+        { label: 'Guru in head',         detected: inHead(/getguru\.com/) },
+      ],
+    },
+    {
+      name: 'Outline', color: '#000000', category: 'Knowledge Base Platform',
+      signals: [
+        { label: 'getoutline.com domain', detected: hostname.includes('getoutline.com') },
+        { label: 'Outline DOM markers',   detected: hasEl('[data-sharing-url],[class*="outline-"]') || (hasEl('#__NEXT_DATA__') && inHead(/outline/)) },
+        { label: 'Outline script',        detected: hasScript(/getoutline\.com/) },
+        { label: 'Outline in head',       detected: inHead(/getoutline/) },
+      ],
+    },
+    {
       name: 'Front Knowledge Base', color: '#f04e23', category: 'Help Center Platform',
       signals: [
         { label: 'front.com / frontapp.com domain',   detected: /front\.com|frontapp\.com/.test(hostname) },
@@ -543,7 +590,7 @@ async function detectDocsPlatform() {
       analytics: detectedAnalytics,
       openApi: hasOpenApiSpec,
     },
-    agentic: { score: agenticScore, grade: agenticGrade, checks: agenticChecks },
+    agentic: { score: agenticScore, grade: agenticGrade, checks: agenticChecks, url: origin },
   };
 }
 
@@ -697,12 +744,59 @@ function renderAnalysis(opp) {
     </div>`;
 }
 
+const PLATFORM_CONTEXT = {
+  'GitBook': {
+    pain: 'GitBook is facing pricing pressure and has shifted focus away from developer docs toward internal wikis.',
+    pitch: 'Mintlify is purpose-built for developer docs with AI search, Ask AI, and API playgrounds out of the box.',
+  },
+  'ReadMe': {
+    pain: 'ReadMe is strong on API references but lacks a full docs experience — no native AI assistant or feedback.',
+    pitch: 'Mintlify combines API references, guides, and AI features in one platform without stitching tools together.',
+  },
+  'Confluence': {
+    pain: 'Confluence is built for internal wikis, not external developer docs — slow, hard to customize, no AI.',
+    pitch: 'Mintlify is built from the ground up for public-facing developer documentation with modern AI tooling.',
+  },
+  'Notion': {
+    pain: 'Notion lacks structured navigation, versioning, API playground, and AI discoverability for developer docs.',
+    pitch: 'Mintlify is purpose-built for developer docs — not repurposed from a note-taking tool.',
+  },
+  'MadCap Flare': {
+    pain: 'MadCap Flare is a legacy desktop tool with a steep learning curve and no native AI or developer integrations.',
+    pitch: 'Mintlify modernizes the docs workflow with Git-based authoring, AI search, and zero infrastructure overhead.',
+  },
+  'Docusaurus': {
+    pain: 'Docusaurus requires significant engineering time to maintain, customize, and add features like AI search.',
+    pitch: 'Mintlify handles the infrastructure so the team can focus on content, not maintaining a docs framework.',
+  },
+  'Zendesk': {
+    pain: 'Zendesk Help Center is built for support tickets — it lacks developer-focused features like API playgrounds and code blocks.',
+    pitch: 'Mintlify is designed for developer docs with interactive API references and AI-powered search built in.',
+  },
+  'Freshdesk': {
+    pain: 'Freshdesk is a support platform, not a developer docs tool — limited customization and no AI assistant.',
+    pitch: 'Mintlify is purpose-built for developer documentation with AI search, feedback, and analytics.',
+  },
+  'Intercom Articles': {
+    pain: 'Intercom Articles is a lightweight help center, not built for technical documentation or API references.',
+    pitch: 'Mintlify handles complex developer docs with versioning, code playgrounds, and AI search natively.',
+  },
+  'HubSpot Knowledge Base': {
+    pain: 'HubSpot KB is built for marketing teams, not developer docs — no code support, versioning, or AI features.',
+    pitch: 'Mintlify is purpose-built for developer documentation with a full AI and analytics suite.',
+  },
+  'Slate': {
+    pain: 'Slate is an unmaintained static generator — no search, no AI, no analytics, and requires manual HTML editing.',
+    pitch: 'Mintlify modernizes API docs with interactive playgrounds, AI search, and Git-based workflows.',
+  },
+};
+
 function renderSummary(data) {
   const { detected, hostname, opportunity: opp, agentic } = data;
 
-  const platform = detected.length > 0
-    ? detected[0].name
-    : (opp?.techStack ? `Homegrown (${opp.techStack})` : 'Homegrown / Unknown');
+  const primaryPlatform = detected.length > 0 ? detected[0].name : null;
+  const platformLabel = primaryPlatform
+    ?? (opp?.techStack ? `Homegrown (${opp.techStack})` : 'Homegrown / Unknown');
 
   const agenticLine = agentic
     ? `Agentic Score: ${agentic.grade} (${agentic.score}/100)`
@@ -713,24 +807,26 @@ function renderSummary(data) {
     gaps.push('No llms.txt — content invisible to AI agents');
   }
   if (opp) {
-    if (!opp.aiAssistant.detected) gaps.push('No AI assistant');
-    if (!opp.features.hasSearch)   gaps.push('No search');
-    if (!opp.features.hasFeedback) gaps.push('No page feedback');
+    if (!opp.aiAssistant.detected)      gaps.push('No AI assistant');
+    if (!opp.features.hasSearch)        gaps.push('No search');
+    if (!opp.features.hasFeedback)      gaps.push('No page feedback');
     if (!opp.features.hasApiPlayground) gaps.push('No interactive API playground');
-    if (opp.analytics.length === 0) gaps.push('No documentation analytics');
+    if (opp.analytics.length === 0)     gaps.push('No documentation analytics');
   }
 
   const gapsText = gaps.length > 0
     ? gaps.slice(0, 5).map(g => `• ${g}`).join('\n')
     : '• No major gaps detected';
 
+  const ctx = PLATFORM_CONTEXT[primaryPlatform] || null;
+  const contextLine = ctx ? `\n${ctx.pain}\n${ctx.pitch}` : '';
+
   const text = [
-    `${hostname} uses ${platform}.`,
+    `${hostname} uses ${platformLabel}.`,
     agenticLine,
-    '',
-    `Gaps vs. Mintlify:\n${gapsText}`,
-    '',
-    'Mintlify delivers AI search, Ask AI, page feedback, and analytics out of the box.',
+    contextLine,
+    `\nGaps vs. Mintlify:\n${gapsText}`,
+    '\nMintlify delivers AI search, Ask AI, page feedback, and analytics out of the box.',
   ].filter(Boolean).join('\n');
 
   return `
@@ -742,7 +838,7 @@ function renderSummary(data) {
 }
 
 function renderAgenticScore(agentic) {
-  const { score, grade, checks, categories, cap, fromApi } = agentic;
+  const { score, grade, checks, categories, cap, fromApi, url } = agentic;
   const gradeColors = { 'A+': '#22c55e', 'A': '#4ade80', 'B': '#a3e635', 'C': '#fbbf24', 'D': '#f97316', 'F': '#ef4444' };
   const color = gradeColors[grade] || '#22d3ee';
 
@@ -783,12 +879,17 @@ function renderAgenticScore(agentic) {
 
   const source = fromApi ? 'afdocs.dev' : 'client-side est. · afdocs.dev';
   const capNote = cap ? ` · ${cap.reason ?? 'score capped'}` : '';
+  const hostname = agentic.url ? new URL(agentic.url).hostname.replace(/^www\./, '') : '';
+  const mintlifyScoreUrl = hostname ? `https://www.mintlify.com/score/${hostname.replace(/\./g, '-')}` : 'https://www.mintlify.com/score';
 
   return `
     <div class="agentic-card" id="agentic-score-card" style="--grade-color: ${color}">
       <div class="agentic-header">
         <span class="agentic-title">Agentic Score <span style="font-size:9px;opacity:0.6;text-transform:none;letter-spacing:0;font-weight:500">${source}</span></span>
-        <span class="agentic-grade">${grade}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <a href="${mintlifyScoreUrl}" target="_blank" style="font-size:9px;color:var(--accent);text-decoration:none;border:1px solid var(--accent-dim);border-radius:4px;padding:2px 7px;font-weight:600;" title="View on Mintlify Score">Full Report ↗</a>
+          <span class="agentic-grade">${grade}</span>
+        </div>
       </div>
       <div class="agentic-score-row">
         <span class="agentic-score-num">${score}</span>
